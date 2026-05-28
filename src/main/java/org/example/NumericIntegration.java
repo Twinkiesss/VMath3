@@ -1,109 +1,208 @@
-import java.util.Scanner;
+package org.example;
+
+import java.util.function.DoubleUnaryOperator;
 
 public class NumericIntegration {
 
-    // Функция f(x) = -2x^3 - 3x^2 + x + 5
-    static double f(double x) {
-        return -2.0 * x*x*x - 3.0 * x*x + x + 5.0;
+    public static class Result {
+
+        public double value;
+        public int n;
+
+        public Result(double value, int n) {
+            this.value = value;
+            this.n = n;
+        }
     }
 
-    // Левые прямоугольники
-    static double rectangleLeft(double a, double b, int n) {
-        double h = (b - a) / n;
-        double sum = 0.0;
-        for (int i = 0; i < n; i++) {
-            double xi = a + i * h;
-            sum += f(xi);
-        }
-        return h * sum;
+    //обычные функции
+    public static Result integrate(int method,
+                                   double a,
+                                   double b,
+                                   double eps,
+                                   int funcId) {
+
+        return integrate(
+                method,
+                a,
+                b,
+                eps,
+                x -> IntegrandFunction.f(funcId, x)
+        );
     }
 
-    // Правые прямоугольники
-    static double rectangleRight(double a, double b, int n) {
-        double h = (b - a) / n;
-        double sum = 0.0;
-        for (int i = 1; i <= n; i++) {
-            double xi = a + i * h;
-            sum += f(xi);
-        }
-        return h * sum;
-    }
+    public static Result integrate(int method,
+                                   double a,
+                                   double b,
+                                   double eps,
+                                   DoubleUnaryOperator f) {
 
-    // Средние прямоугольники
-    static double rectangleMiddle(double a, double b, int n) {
-        double h = (b - a) / n;
-        double sum = 0.0;
-        for (int i = 0; i < n; i++) {
-            double xi = a + (i + 0.5) * h;
-            sum += f(xi);
-        }
-        return h * sum;
-    }
-
-    // Метод трапеций
-    static double trapezoid(double a, double b, int n) {
-        double h = (b - a) / n;
-        double sum = 0.5 * (f(a) + f(b));
-        for (int i = 1; i < n; i++) {
-            sum += f(a + i * h);
-        }
-        return h * sum;
-    }
-
-    // Метод Симпсона (n чётное)
-    static double simpson(double a, double b, int n) {
-        if (n % 2 != 0) {
-            throw new IllegalArgumentException("n должно быть чётным");
-        }
-        double h = (b - a) / n;
-        double sum = f(a) + f(b);
-        for (int i = 1; i < n; i++) {
-            double xi = a + i * h;
-            sum += (i % 2 == 1) ? 4.0 * f(xi) : 2.0 * f(xi);
-        }
-        return h * sum / 3.0;
-    }
-
-    // Правило Рунге (для метода трапеций)
-    static double rungeTrap(double a, double b, double eps) {
         int n = 4;
-        double h = (b - a) / n;
-        double I1, I2;
+
+        double i1;//знач при n
+        double i2;//2n
+
         do {
-            I1 = trapezoid(a, b, n);
+            i1 = applyMethod(method, a, b, n, f);
+            i2 = applyMethod(method, a, b, n * 2, f);
             n *= 2;
-            h = (b - a) / n;
-            I2 = trapezoid(a, b, n);
-            double error = Math.abs(I2 - I1) / 3.0; // p=2
-        } while (Math.abs(I2 - I1) > 3.0 * eps);
-        return I2;
+
+        } while (rungeError(i1, i2, method) > eps);
+
+        return new Result(i2, n);
     }
 
-    public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
+    private static double rungeError(double i1,
+                                     double i2,
+                                     int method) {
 
-        System.out.println("Лабораторная работа №3. Численное интегрирование");
-        System.out.println("Функция: f(x) = -2*x^3 - 3*x^2 + x + 5");
-        System.out.print("Введите пределы интегрирования a и b: ");
-        double a = sc.nextDouble();
-        double b = sc.nextDouble();
-        System.out.print("Введите требуемую точность (eps): ");
-        double eps = sc.nextDouble();
+        switch (method) {
 
-        int n = 10;
-        double I_mid   = rectangleMiddle(a, b, n);
-        double I_trap  = trapezoid(a, b, n);
-        double I_simp  = simpson(a, b, n);
+            // левые/правые прямоугольники
+            case 1:
+            case 2:
+                return Math.abs(i2 - i1);
 
-        System.out.printf("\nРезультаты при n=%d:\n", n);
-        System.out.printf("Средние прямоугольники: %.6f\n", I_mid);
-        System.out.printf("Метод трапеций:        %.6f\n", I_trap);
-        System.out.printf("Метод Симпсона:        %.6f\n", I_simp);
+            // средние/трапеции
+            case 3:
+            case 4:
+                return Math.abs(i2 - i1) / 3.0;
 
-        double I_runge = rungeTrap(a, b, eps);
-        System.out.printf("По правилу Рунге (трапеции): %.6f (eps=%.2e)\n",
-                I_runge, eps);
+            // Симпсон
+            case 5:
+                return Math.abs(i2 - i1) / 15.0;
 
-        sc.close();
+            default:
+                return Double.MAX_VALUE;
+        }
+    }
+
+    private static double safeValue(DoubleUnaryOperator f,
+                                    double x) {
+
+        double val = f.applyAsDouble(x);
+
+        if (Double.isNaN(val) || Double.isInfinite(val)) {
+            throw new ArithmeticException("Разрыв функции");
+        }
+
+        return val;
+    }
+
+    private static double applyMethod(int method,
+                                      double a,
+                                      double b,
+                                      int n,
+                                      DoubleUnaryOperator f) {
+
+        switch (method) {
+
+            case 1:
+                return rectangleLeft(a, b, n, f);
+
+            case 2:
+                return rectangleRight(a, b, n, f);
+
+            case 3:
+                return rectangleMiddle(a, b, n, f);
+
+            case 4:
+                return trapezoid(a, b, n, f);
+
+            case 5:
+                return simpson(a, b, n, f);
+
+            default:
+                throw new IllegalArgumentException("Некорректный метод");
+        }
+    }
+
+    private static double rectangleLeft(double a,
+                                        double b,
+                                        int n,
+                                        DoubleUnaryOperator f) {
+
+        double h = (b - a) / n;
+        double sum = 0;
+
+        for (int i = 0; i < n; i++) {
+            double x = a + i * h;
+            sum += safeValue(f, x);
+        }
+
+        return sum * h;
+    }
+
+    private static double rectangleRight(double a,
+                                         double b,
+                                         int n,
+                                         DoubleUnaryOperator f) {
+
+        double h = (b - a) / n;
+        double sum = 0;
+
+        for (int i = 1; i <= n; i++) {
+            double x = a + i * h;
+            sum += safeValue(f, x);
+        }
+
+        return sum * h;
+    }
+
+    private static double rectangleMiddle(double a,
+                                          double b,
+                                          int n,
+                                          DoubleUnaryOperator f) {
+
+        double h = (b - a) / n;
+        double sum = 0;
+
+        for (int i = 0; i < n; i++) {
+            double x = a + (i + 0.5) * h;
+            sum += safeValue(f, x);
+        }
+
+        return sum * h;
+    }
+
+    private static double trapezoid(double a,
+                                    double b,
+                                    int n,
+                                    DoubleUnaryOperator f) {
+
+        double h = (b - a) / n;
+        double sum = (safeValue(f, a) + safeValue(f, b)) / 2.0;
+
+        for (int i = 1; i < n; i++) {
+            double x = a + i * h;
+            sum += safeValue(f, x);
+        }
+
+        return sum * h;
+    }
+
+    private static double simpson(double a,
+                                  double b,
+                                  int n,
+                                  DoubleUnaryOperator f) {
+
+        if (n % 2 != 0) {
+            n++;
+        }
+
+        double h = (b - a) / n;
+        double sum = safeValue(f, a) + safeValue(f, b);
+
+        for (int i = 1; i < n; i++) {
+            double x = a + i * h;
+
+            if (i % 2 == 0) {
+                sum += 2 * safeValue(f, x);
+            } else {
+                sum += 4 * safeValue(f, x);
+            }
+        }
+
+        return sum * h / 3.0;
     }
 }
